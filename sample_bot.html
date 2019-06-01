@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html dir="ltr" lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<title>test</title>
+</head>
+
+<body>
+</body>
+
+
+<script type="text/javascript">
+
+/* --- BROKER CODE ---------------------------------- */
+const precosDeFechamentos = [1,1,2,1,2,2,3,3,2,3,3,4,3,4,4,5,4,5,5,5,6,6,6,7,7,7,8,8,8,9,9,9,8,8,9,8,7,8,7,7,6,6,7,6,5,5,4,5,4,3,4,3,4,5,5,6,6,6,5,6,5,4,4,3,3,4,2,3,2,2,1,2,1,2,3,3,4,4,5,5,5,6,6,6,7,7,8,7,8,8,7,7,6,7,6,5,6,5,4,5,4,5,5,6,6,6,7,7,6,6,5,6,5,4,4,3,3,2,2,1,1,2,2,3,3,4,4,5,6,6,6,5,5,4,4,3,4,3,2,3,2,3,3,4,4,5,5,6,7,6,7,8,8,8,9,9,8,8,7,7,6,6,7,8,7,8,9,9,8,8,7,7,6,7,6,5,6,5,6,6,7,7,8,8,8,9,9,8,9,8,9,8,7,7,6,6,5,6,5,6,5,4,5,4,5,4,4,4,3,3,4,3,2,3,2,1,2,3,2,1,2,3,2,1,2,3,4,3,2,1,2,3,2,1,2,3,2,3,2,3,2,3,2,1,2,1,1,2,3,4,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,2,2,1,1,2,5,6,7,8,9,8,7,6,7,8,7,6,5,5,5,5,5,2];
+var brokerIndex = 0; // Utilizado para posicionar o indice do broker. Aumenta conforme latencia de requisicao do client
+
+ 
+function requestBrokerPrice()
+{
+    if(brokerIndex == precosDeFechamentos.length)
+        return(-1);
+    else
+        return(precosDeFechamentos[brokerIndex++]);
+}
+
+/* ------------------------------------- */
+/* --- CLIENT CODE ---------------------------------- */
+
+const LATENCIA = 15;
+function requestWarpBrokerPrice()
+{
+    // pause(LATENCIA);
+    return(requestBrokerPrice());
+}
+
+const mediaRapida = 9;
+const mediaLerda = 21;
+const kRapido = 2/(mediaRapida+1);
+const kLerdo = 2/(mediaLerda+1);
+
+var flagStartBot = 0;  // Indica quando ha dados suficientes fornecidos pelo broker (= mediaLerda) para iniciar os calculos do flagStartBot
+var flagRunning = 1; // Indica o tempo de vida do bot. No caso a quantidade total de dados fornicidos pelo broker (= precosDeFechamentos.size). Comeca ligado. TODO: acionar por combo box
+
+/* ------------------------------------- */
+
+function calulaMediaMovelExponencial(precoAtual, seed, k)
+{
+    return(((precoAtual - seed) * k) + seed);
+}
+
+
+document.write("inicio<br>");
+
+do{
+    var brokerReturn = 0;
+    var seed = 0;
+
+    /* Calculando a MMS inicial para a MME */
+    if(flagStartBot == 0){
+        for(i = 0; i < mediaLerda; i++){
+
+            /* faz requisicao de preco ao broker */
+            brokerReturn = requestWarpBrokerPrice();
+
+            if(brokerReturn == -1){
+                flagRunning = 0; // Broker nao pode mais responder
+                break;
+            }
+
+            seed += brokerReturn;
+        }
+        
+        seed /= mediaLerda; // MMS
+        flagStartBot = 1; // Lets rock!
+    }else{
+        /* Temos a MMS inicial, todo valor agora é calculado dinamicamente */
+        
+        var MMERapida = 0;
+        var MMELerda  = 0;
+        
+        var MMERapidaProx = 0;
+        var MMELerdaProx  = 0;
+        
+        var seedRapida = 0;
+        var seedLerda  = 0;
+        
+        /* Para start dos CALLs, temos que ajustar 3 periodos */
+        /* TODO: COLCOAR ISSO EM UMA FUNCAO. VER https://www.smashingmagazine.com/2016/07/how-to-use-arguments-and-parameters-in-ecmascript-6/#passing-arguments-by-reference */
+        
+        //1
+        seedRapida = seedLerda = seed;
+        
+        brokerReturn = requestWarpBrokerPrice();
+
+        if(brokerReturn == -1){
+            flagRunning = 0; // Broker nao pode mais responder. Sei la.. acabo.. foda-se!
+            break;
+        }
+        
+        MMERapida = calulaMediaMovelExponencial(brokerReturn, seedRapida, kRapido);
+        MMELerda  = calulaMediaMovelExponencial(brokerReturn, seedLerda , kLerdo );
+        
+        //2
+        seedRapida = MMERapida;
+        seedLerda  = MMELerda;
+
+        brokerReturn = requestWarpBrokerPrice();
+
+        if(brokerReturn == -1){
+            flagRunning = 0; // Broker nao pode mais responder. Sei la.. acabo.. foda-se!
+            break;
+        }
+        
+        MMERapidaProx = calulaMediaMovelExponencial(brokerReturn, seedRapida, kRapido);
+        MMELerdaProx  = calulaMediaMovelExponencial(brokerReturn, seedLerda , kLerdo );
+        
+            
+        do{
+            document.write("Preco: " + brokerReturn + " | " + "MMERapida: " + MMERapida + " | MMELerda: " + MMELerda + " >>> ");
+            
+            if     ((MMERapida  > MMELerda) && (MMERapidaProx  > MMELerdaProx)) document.write("continua comprado..<br>");
+            else if((MMERapida  > MMELerda) && (MMERapidaProx  < MMELerdaProx)) document.write("--- CALL DE VENDA! ---<br>");
+            else if((MMERapida  < MMELerda) && (MMERapidaProx  > MMELerdaProx)) document.write("+++ CALL DE COMPRA! +++<br>");
+            else if((MMERapida  < MMELerda) && (MMERapidaProx  < MMELerdaProx)) document.write("continua vendido...<br>");
+            else if((MMERapida == MMELerda) || (MMERapidaProx == MMELerdaProx)) document.write("atencao para possivel reversao<br>");  // poderia considerar uma porcentagem
+            else                                                                document.write("undef<br>"); // eh-eh
+
+            seedRapida = MMERapida = MMERapidaProx;
+            seedLerda  = MMELerda  = MMELerdaProx;
+
+            brokerReturn = requestWarpBrokerPrice();
+
+            if(brokerReturn == -1){
+                flagRunning = 0; // Broker nao pode mais responder. Sei la.. acabo.. foda-se!
+                break;
+            }
+        
+            MMERapidaProx = calulaMediaMovelExponencial(brokerReturn, seedRapida, kRapido);
+            MMELerdaProx  = calulaMediaMovelExponencial(brokerReturn, seedLerda , kLerdo );
+
+        }while(1);
+    }    
+ 
+}while (flagRunning == 1);
+
+
+document.write("fim");
+</script>
+
+
+</html>
